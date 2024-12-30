@@ -1,30 +1,35 @@
-from surmount.base_class import Strategy, TargetAllocation, backtest
+from surmount.base_class import Strategy, TargetAllocation
 from surmount.logging import log
-from statistics import stdev
-from surmount.technical_indicators import SMA, BB, RSI
 
 class TradingStrategy(Strategy):
 
-   @property
-   def assets(self):
-      return ["SPY", "QQQ", "VTI", "VXUS"]
+    @property
+    def interval(self):
+        return "1day"
 
-   @property
-   def interval(self):
-      return "1day"
+    @property
+    def assets(self):
+        return ["NKE"]
 
-   def run(self, data):
-      holdings = data["holdings"]
-      data = data["ohlcv"]
-      
-      allocation_dict = {}
-      rsi_dict = {}
-      for ticker in self.assets:
-         try: rsi_dict[ticker] = RSI(ticker, data, 14)[-1]
-         except: rsi_dict[ticker] = 1
+    def run(self, data):
+        ohlcv = data.get("ohlcv")
 
-      allocation_dict = {i: rsi_dict[i]/(sum(rsi_dict.values())+10) for i in self.assets}
-      for key in allocation_dict:
-         if abs(allocation_dict[key]-holdings.get(key, 0))>0.02:
-            return TargetAllocation(allocation_dict)
-      return None
+        if not ohlcv or len(ohlcv) < 252:
+            log("Not enough data for 52-week low calculation.")
+            return None  # Return None instead of empty TargetAllocation
+
+        past_year_data = ohlcv[-252:]
+        prices = [day["NKE"]["low"] for day in past_year_data]
+        fifty_two_week_low = min(prices)
+
+        current_price = ohlcv[-1]["NKE"]["close"]
+        dip_threshold = 0.05
+        buy_zone_upper_limit = fifty_two_week_low * (1 + dip_threshold)
+        allocation_percentage = 0.5
+
+        if current_price <= buy_zone_upper_limit:
+            log(f"NKE is within {dip_threshold*100}% of its 52-week low. Allocating {allocation_percentage*100}%.")
+            return TargetAllocation({"NKE": allocation_percentage})
+        else:
+            log("NKE is not near its 52-week low. No allocation.")
+            return None  # Return None instead of empty TargetAllocation
